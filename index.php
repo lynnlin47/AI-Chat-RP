@@ -37,7 +37,7 @@ function getGroupAvatarCollage($members_data) {
     $i = 0;
     foreach ($members_data as $m) {
         if ($i >= 4) break;
-        $av = $m['data']['avatar'] ?? '';
+        $av = str_replace('\\', '/', $m['data']['avatar'] ?? '');
         $ini = mb_substr($m['data']['name'], 0, 1, 'UTF-8');
         if (!empty($av)) {
             $html .= '<img src="'.htmlspecialchars($av).'" class="w-full h-full object-cover">';
@@ -62,7 +62,7 @@ if (isset($_GET['select'])) {
             $_SESSION['active_group_id'] = null;
             $_SESSION['chat_history'] = [];
             
-            $log_filename = 'data/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $char['data']['name']) . '.json';
+            $log_filename = 'data/' . preg_replace('/[^\p{L}\p{M}\p{N}_-]/u', '_', $char['data']['name']) . '.json';
             if (file_exists($log_filename)) {
                 $historical_logs = json_decode(file_get_contents($log_filename), true);
                 if (is_array($historical_logs)) {
@@ -106,30 +106,20 @@ if (isset($_GET['select_group'])) {
 if (isset($_GET['action']) && $_GET['action'] === 'create_group' && isset($_GET['chars'])) {
     $selected_chars = $_GET['chars'];
     sort($selected_chars);
-    $group_id = md5(implode('-', $selected_chars));
+    $group_id = md5(implode('-', $selected_chars) . uniqid());
     
-    $group_exists = false;
-    foreach ($groups as $grp) {
-        if ($grp['id'] === $group_id) {
-            $group_exists = true;
-            break;
-        }
+    $member_names = [];
+    foreach ($characters as $c) {
+        if (in_array($c['file_name'], $selected_chars)) $member_names[] = $c['name'];
     }
-    
-    if (!$group_exists) {
-        $member_names = [];
-        foreach ($characters as $c) {
-            if (in_array($c['file_name'], $selected_chars)) $member_names[] = $c['name'];
-        }
-        $new_group = [
-            'id' => $group_id,
-            'name' => 'กลุ่มใหม่ (' . implode(', ', $member_names) . ')',
-            'avatar' => '',
-            'members' => $selected_chars
-        ];
-        $groups[] = $new_group;
-        file_put_contents($groups_file, json_encode($groups, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-    }
+    $new_group = [
+        'id' => $group_id,
+        'name' => 'กลุ่มใหม่ (' . implode(', ', $member_names) . ')',
+        'avatar' => '',
+        'members' => $selected_chars
+    ];
+    $groups[] = $new_group;
+    file_put_contents($groups_file, json_encode($groups, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     
     $_SESSION['active_group_id'] = $group_id;
     $_SESSION['character'] = null;
@@ -142,7 +132,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'create_group' && isset($_GET[
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_group') {
     $group_id = $_POST['group_id'];
     $new_name = trim($_POST['group_name']);
-    $new_avatar = trim($_POST['group_avatar']);
+    $new_avatar = str_replace('\\', '/', trim($_POST['group_avatar']));
     $new_members = $_POST['members'] ?? [];
     
     if (!empty($new_name) && count($new_members) >= 2) {
@@ -183,7 +173,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'clear') {
     if (!empty($_SESSION['active_group_id'])) {
         $log_filename = 'data/group_' . $_SESSION['active_group_id'] . '.json';
     } elseif (isset($_SESSION['character'])) {
-        $log_filename = 'data/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $_SESSION['character']['name']) . '.json';
+        $log_filename = 'data/' . preg_replace('/[^\p{L}\p{M}\p{N}_-]/u', '_', $_SESSION['character']['name']) . '.json';
     }
     if (isset($log_filename) && file_exists($log_filename)) unlink($log_filename);
     header('Location: index.php');
@@ -263,7 +253,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_chat'])) {
 
         $identity_filename = $is_group_mode 
             ? 'identity/group_' . $current_group_data['id'] . '.json' 
-            : 'identity/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $_SESSION['character']['name']) . '.json';
+            : 'identity/' . preg_replace('/[^\p{L}\p{M}\p{N}_-]/u', '_', $_SESSION['character']['name']) . '.json';
         
         $current_identity = file_exists($identity_filename) ? json_decode(file_get_contents($identity_filename), true) : null;
 
@@ -350,7 +340,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_chat'])) {
 
             $log_filename = $is_group_mode 
                 ? 'data/group_' . $current_group_data['id'] . '.json' 
-                : 'data/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $char['name']) . '.json';
+                : 'data/' . preg_replace('/[^\p{L}\p{M}\p{N}_-]/u', '_', $char['name']) . '.json';
 
             $existing_logs = file_exists($log_filename) ? (json_decode(file_get_contents($log_filename), true) ?? []) : [];
             $existing_logs[] = ['timestamp' => date('Y-m-d H:i:s'), 'user_input' => $log_text, 'ai_response' => $ai_text];
@@ -374,12 +364,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_chat'])) {
 
 if ($is_group_mode) {
     $rendered_nickname = $current_group_data['name'];
-    $rendered_avatar = $current_group_data['avatar'] ?? '';
+    $rendered_avatar = str_replace('\\', '/', $current_group_data['avatar'] ?? '');
     $identity_filename = 'identity/group_' . $current_group_data['id'] . '.json';
 } else {
     $rendered_nickname = $active_char['name'] ?? ($active_dna['nickname'] ?? 'ยังไม่มีตัวตน');
-    $rendered_avatar = $active_char['avatar'] ?? '';
-    $identity_filename = 'identity/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $rendered_nickname) . '.json';
+    $rendered_avatar = str_replace('\\', '/', $active_char['avatar'] ?? '');
+    $identity_filename = 'identity/' . preg_replace('/[^\p{L}\p{M}\p{N}_-]/u', '_', $rendered_nickname) . '.json';
 }
  $first_letter = mb_substr($rendered_nickname, 0, 1, 'UTF-8');
 
@@ -462,11 +452,12 @@ function parseGroupBubbles($text) {
                     foreach ($characters as $c) {
                         if (in_array($c['file_name'], $grp['members'])) $grp_members_data[] = $c;
                     }
+                    $grp_avatar_clean = str_replace('\\', '/', $grp['avatar'] ?? '');
                 ?>
                     <div class="relative group flex items-center gap-2 rounded-lg transition <?php echo $is_grp_active ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-slate-100 dark:hover:bg-slate-800/50'; ?>">
                         <a href="index.php?select_group=<?php echo $grp['id']; ?>" class="flex flex-1 items-center gap-3 p-3">
-                            <?php if (!empty($grp['avatar'])): ?>
-                                <img src="<?php echo htmlspecialchars($grp['avatar']); ?>" class="w-12 h-12 rounded-full object-cover border border-emerald-200 dark:border-emerald-800 flex-shrink-0">
+                            <?php if (!empty($grp_avatar_clean)): ?>
+                                <img src="<?php echo htmlspecialchars($grp_avatar_clean); ?>" class="w-12 h-12 rounded-full object-cover border border-emerald-200 dark:border-emerald-800 flex-shrink-0">
                             <?php else: 
                                 echo getGroupAvatarCollage($grp_members_data);
                             endif; ?>
@@ -487,9 +478,11 @@ function parseGroupBubbles($text) {
                 <div class="p-4 text-center text-sm text-slate-400">ไม่พบสายรหัส DNA<br><a href="settings.php" class="text-blue-500 underline block mt-2">กดสถาปนาตัวตนแรก 🪄</a></div>
             <?php else: ?>
                 <?php foreach ($characters as $char): ?>
-                    <?php $char_initial = mb_substr($char['name'], 0, 1, 'UTF-8');
+                    <?php 
+                    $char_initial = mb_substr($char['name'], 0, 1, 'UTF-8');
                     $is_active = !$is_group_mode && ($active_char && ($active_char['name'] ?? '') === ($char['data']['name'] ?? ''));
-                    $nav_avatar = $char['data']['avatar'] ?? ''; ?>
+                    $nav_avatar = str_replace('\\', '/', $char['data']['avatar'] ?? ''); 
+                    ?>
                     <div class="flex items-center gap-2 group">
                         <input type="checkbox" name="chars[]" value="<?php echo $char['file_name']; ?>" form="group-form" class="group-checkbox w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-600 dark:bg-slate-700 cursor-pointer flex-shrink-0 ml-3">
                         <a href="index.php?select=<?php echo urlencode($char['file_name']); ?>" class="flex flex-1 items-center gap-3 p-3 rounded-lg transition <?php echo $is_active ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'hover:bg-slate-100 dark:hover:bg-slate-800/50'; ?>">
@@ -573,8 +566,10 @@ function parseGroupBubbles($text) {
                                 <div class="max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 sm:px-5 py-3 text-base leading-relaxed bg-[#0084FF] text-white">
                                     <p class="markdown-content"><?php echo htmlspecialchars($chat['parts'][0]['text'] ?? ''); ?></p>
                                 </div>
-                                <?php if (!empty($user_profile['avatar'])): ?>
-                                    <img src="<?php echo htmlspecialchars($user_profile['avatar']); ?>" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-200 flex-shrink-0">
+                                <?php if (!empty($user_profile['avatar'])): 
+                                    $user_av = str_replace('\\', '/', $user_profile['avatar']);
+                                ?>
+                                    <img src="<?php echo htmlspecialchars($user_av); ?>" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-200 flex-shrink-0">
                                 <?php endif; ?>
                             </div>
                         <?php else: ?>
@@ -592,7 +587,7 @@ function parseGroupBubbles($text) {
                                 if (!empty($speaker)) {
                                     foreach ($current_group_members_data as $m) {
                                         if ($m['data']['dna']['nickname'] === $speaker) {
-                                            $speaker_avatar = $m['data']['avatar'] ?? '';
+                                            $speaker_avatar = str_replace('\\', '/', $m['data']['avatar'] ?? '');
                                             $speaker_initial = mb_substr($speaker, 0, 1, 'UTF-8');
                                             break;
                                         }
@@ -738,7 +733,7 @@ function parseGroupBubbles($text) {
         const groupMembersData = <?php echo json_encode($current_group_members_data); ?>;
         const mainAvatar = <?php echo json_encode($rendered_avatar); ?>;
         const mainInitial = <?php echo json_encode($first_letter); ?>;
-        const userAvatar = <?php echo json_encode($user_profile['avatar'] ?? ''); ?>;
+        const userAvatar = <?php echo json_encode(str_replace('\\', '/', $user_profile['avatar'] ?? '')); ?>;
         const initialIdentity = <?php echo json_encode($current_identity_data); ?>;
 
         marked.setOptions({ breaks: true, gfm: true });
@@ -773,418 +768,336 @@ function parseGroupBubbles($text) {
             if (currentSpeaker !== null) {
                 bubbles.push({ speaker: currentSpeaker, msg: currentMsg.trim() });
             }
+            return bubbles.length > 0 ? bubbles : [{ speaker: '', msg: text }];
+        }
+
+        function escapeHtml(text) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function createBubbleHTML(speaker, msg, isUser) {
+            let speakerAvatar = '';
+            let speakerInitial = '👤';
             
-            if (bubbles.length === 0) {
-                return [{ speaker: '', msg: text }];
-            }
-            return bubbles;
-        }
-
-        const groupsData = <?php echo json_encode($groups); ?>;
-        function openEditGroupModal(id) {
-            const group = groupsData.find(g => g.id === id);
-            if (!group) return;
-            document.getElementById('modal_group_id').value = id;
-            document.getElementById('modal_delete_group_id').value = id;
-            document.getElementById('modal_group_name').value = group.name;
-            document.getElementById('modal_group_avatar').value = group.avatar || '';
-            document.querySelectorAll('.modal_member_checkbox').forEach(cb => {
-                cb.checked = group.members.includes(cb.value);
-            });
-            const modal = document.getElementById('editGroupModal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-        function closeEditGroupModal() {
-            const modal = document.getElementById('editGroupModal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
-        document.getElementById('editGroupModal').addEventListener('click', function(e) {
-            if (e.target === this) closeEditGroupModal();
-        });
-
-        const eventModal = document.getElementById('eventModal');
-        const eventText = document.getElementById('event_text_input');
-        function openEventModal() {
-            eventModal.classList.remove('hidden');
-            eventModal.classList.add('flex');
-            eventText.focus();
-        }
-        function closeEventModal() {
-            eventModal.classList.add('hidden');
-            eventModal.classList.remove('flex');
-            eventText.value = '';
-        }
-        document.getElementById('cancel_event_btn').addEventListener('click', closeEventModal);
-        eventModal.addEventListener('click', function(e) {
-            if (e.target === this) closeEventModal();
-        });
-
-        const identityModal = document.getElementById('identityModal');
-        function openIdentityModal() {
-            identityModal.classList.remove('hidden');
-            identityModal.classList.add('flex');
-        }
-        function closeIdentityModal() {
-            identityModal.classList.add('hidden');
-            identityModal.classList.remove('flex');
-        }
-        identityModal.addEventListener('click', function(e) {
-            if (e.target === this) closeIdentityModal();
-        });
-
-        const avatarHoverArea = document.getElementById('avatar-hover-area');
-        const hoverTooltip = document.getElementById('hover-tooltip');
-        avatarHoverArea.addEventListener('mouseenter', () => hoverTooltip.classList.remove('hidden'));
-        avatarHoverArea.addEventListener('mouseleave', () => hoverTooltip.classList.add('hidden'));
-
-        function updateIdentityUI(data) {
-            if (!data) return;
-            
-            const mood = data.mood || 'ไม่ระบุ';
-            const intimacy = data.intimacy || 0;
-            const trust = data.trust || 0;
-            const affection = data.affection || 0;
-            const stress = data.stress || 0;
-            const energy = data.energy || 0;
-            const thought = data.thought || 'ไม่มี';
-
-            document.getElementById('hover-mood').innerText = `อารมณ์: ${mood}`;
-            document.getElementById('hover-intimacy').innerText = `ความสนิท: ${intimacy}%`;
-            document.getElementById('hover-trust').innerText = `ความไว้วางใจ: ${trust}%`;
-
-            const container = document.getElementById('identity_content');
-            let html = `
-                <div class="p-3 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                    <span class="font-bold text-blue-500">อารมณ์ปัจจุบัน:</span> ${mood}
-                </div>
-                <div class="p-3 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                    <span class="font-bold text-purple-500">ความคิดในใจ (ซ่อนเร้น):</span> ${thought}
-                </div>
-            `;
-            const bars = [
-                {label: 'ความสนิทสนม', val: intimacy, color: 'bg-emerald-500'},
-                {label: 'ความไว้วางใจ', val: trust, color: 'bg-blue-500'},
-                {label: 'ความรู้สึกทางโรแมนติก', val: affection, color: 'bg-rose-500'},
-                {label: 'ความเครียด', val: stress, color: 'bg-amber-500'},
-                {label: 'พลังงาน', val: energy, color: 'bg-indigo-500'}
-            ];
-            bars.forEach(b => {
-                const v = b.val > 100 ? 100 : (b.val < 0 ? 0 : b.val);
-                html += `
-                    <div>
-                        <div class="flex justify-between mb-1"><span class="font-semibold">${b.label}</span><span>${v}%</span></div>
-                        <div class="w-full bg-slate-200 dark:bg-slate-900 rounded-full h-2.5">
-                            <div class="${b.color} h-2.5 rounded-full transition-all duration-500" style="width: ${v}%"></div>
-                        </div>
-                    </div>
-                `;
-            });
-            container.innerHTML = html;
-        }
-        
-        updateIdentityUI(initialIdentity);
-
-        const themeToggle = document.getElementById('theme-toggle');
-        const htmlRoot = document.getElementById('html-root');
-        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            htmlRoot.classList.add('dark');
-        }
-        themeToggle.addEventListener('click', () => {
-            htmlRoot.classList.toggle('dark');
-            localStorage.setItem('theme', htmlRoot.classList.contains('dark') ? 'dark' : 'light');
-        });
-
-        const checkboxes = document.querySelectorAll('.group-checkbox');
-        const createGroupBtn = document.getElementById('create-group-btn');
-        const groupBtnText = document.getElementById('group-btn-text');
-        function updateGroupButton() {
-            let checkedCount = 0;
-            checkboxes.forEach(cb => { if(cb.checked) checkedCount++; });
-            if (checkedCount >= 2) {
-                createGroupBtn.disabled = false;
-                groupBtnText.textContent = `เปิดแชทกลุ่มใหม่ (${checkedCount} ตัวละคร)`;
-                createGroupBtn.classList.add('border-emerald-500', 'text-emerald-600');
+            if (isUser) {
+                speakerAvatar = userAvatar;
+                speakerInitial = 'U';
+            } else if (speaker) {
+                const member = groupMembersData.find(m => m.data.dna.nickname === speaker);
+                if (member) {
+                    speakerAvatar = member.data.avatar ? member.data.avatar.replace(/\\/g, '/') : '';
+                    speakerInitial = speaker.charAt(0);
+                }
             } else {
-                createGroupBtn.disabled = true;
-                groupBtnText.textContent = checkedCount === 1 ? 'เลือกอีก 1 ตัวเพื่อสร้างกลุ่ม' : 'เลือกตัวละครด้านล่างเพื่อสร้างกลุ่ม';
-                createGroupBtn.classList.remove('border-emerald-500', 'text-emerald-600');
-            }
-        }
-        checkboxes.forEach(cb => cb.addEventListener('change', updateGroupButton));
-
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('sidebar-overlay');
-        const btnOpen = document.getElementById('open-sidebar');
-        const btnClose = document.getElementById('close-sidebar');
-
-        function openSidebar() {
-            sidebar.classList.remove('-translate-x-full');
-            overlay.classList.remove('hidden');
-            localStorage.setItem('sidebar_open', 'true');
-        }
-        function closeSidebar() {
-            sidebar.classList.add('-translate-x-full');
-            overlay.classList.add('hidden');
-            localStorage.setItem('sidebar_open', 'false');
-        }
-
-        btnOpen.addEventListener('click', openSidebar);
-        btnClose.addEventListener('click', closeSidebar);
-        overlay.addEventListener('click', closeSidebar);
-
-        if (localStorage.getItem('sidebar_open') === 'true') {
-            openSidebar();
-        } else {
-            closeSidebar();
-        }
-
-        const fileInput = document.getElementById('file_input');
-        const attachBtn = document.getElementById('attach_btn');
-        const filePreview = document.getElementById('file_preview');
-        const fileName = document.getElementById('file_name');
-        const removeFile = document.getElementById('remove_file');
-        let attachedFile = null;
-
-        attachBtn.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                attachedFile = e.target.files[0];
-                fileName.textContent = attachedFile.name;
-                filePreview.classList.remove('hidden');
-            }
-        });
-        removeFile.addEventListener('click', () => {
-            attachedFile = null;
-            fileInput.value = '';
-            filePreview.classList.add('hidden');
-        });
-
-        const textarea = document.getElementById('message-input');
-        const form = document.getElementById('chat-form');
-        const chatBox = document.getElementById('chat-box');
-        const submitBtn = document.getElementById('submit-btn');
-        const forceRpSelect = document.getElementById('force_rp_select');
-        const autoTalkBtn = document.getElementById('auto_talk_btn');
-        const eventModeBtn = document.getElementById('event_mode_btn');
-        const startEventBtn = document.getElementById('start_event_btn');
-        let isSending = false;
-        let isAutoTalk = false;
-        let isEventMode = false;
-        let customEventText = "";
-
-        function scrollToBottom() {
-            setTimeout(() => {
-                if (chatBox) {
-                    chatBox.scrollTop = chatBox.scrollHeight;
-                    requestAnimationFrame(() => {
-                        chatBox.scrollTop = chatBox.scrollHeight;
-                    });
-                }
-            }, 50);
-        }
-
-        if (textarea) {
-            textarea.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    isAutoTalk = false;
-                    isEventMode = false;
-                    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-                }
-            });
-            textarea.addEventListener('input', function() {
-                this.style.height = 'auto';
-                this.style.height = (this.scrollHeight) + 'px';
-            });
-        }
-
-        if (autoTalkBtn) {
-            autoTalkBtn.addEventListener('click', () => {
-                if (isSending) return;
-                isAutoTalk = true;
-                isEventMode = false;
-                customEventText = "";
-                form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-            });
-        }
-
-        if (eventModeBtn) {
-            eventModeBtn.addEventListener('click', openEventModal);
-        }
-
-        if (startEventBtn) {
-            startEventBtn.addEventListener('click', () => {
-                customEventText = eventText.value.trim();
-                if (!customEventText) {
-                    alert("กรุณาเขียนเหตุการณ์");
-                    return;
-                }
-                closeEventModal();
-                isAutoTalk = true;
-                isEventMode = true;
-                form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-            });
-        }
-
-        form.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            if (isSending) return;
-            
-            const userText = isEventMode ? customEventText : textarea.value.trim();
-
-            if (!isAutoTalk && !userText && !attachedFile) {
-                isAutoTalk = false;
-                isEventMode = false;
-                return;
+                speakerAvatar = mainAvatar;
+                speakerInitial = mainInitial;
             }
 
-            textarea.value = '';
-            textarea.style.height = 'auto';
-            
-            if (!isAutoTalk) {
-                const userMsgDiv = document.createElement('div');
-                userMsgDiv.className = 'flex items-end gap-2 justify-end';
-                let userAvatarHtml = `<div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 bg-slate-300 text-slate-600">U</div>`;
-                if (userAvatar) {
-                    userAvatarHtml = `<img src="${userAvatar}" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-200 flex-shrink-0">`;
-                }
-                
-                let attachmentHtml = '';
-                if (attachedFile) {
-                    attachmentHtml = `<div class="mt-2 flex items-center gap-1 text-xs bg-white/20 rounded p-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.586 6.586a6 6 0 108.486 8.486L20.5 13"></path></svg> ${attachedFile.name}</div>`;
-                }
-
-                userMsgDiv.innerHTML = `
-                    <div class="max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 sm:px-5 py-3 text-base leading-relaxed bg-[#0084FF] text-white">
-                        <p class="markdown-content">${marked.parse(userText)}</p>
-                        ${attachmentHtml}
-                    </div>
-                    ${userAvatarHtml}
-                `;
-                chatBox.appendChild(userMsgDiv);
+            let html = `<div class="flex items-end gap-2 justify-${isUser ? 'end' : 'start'}">`;
+            if (isUser) {
+                html += `<div class="max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 sm:px-5 py-3 text-base leading-relaxed bg-[#0084FF] text-white"><div class="markdown-content">${escapeHtml(msg)}</div></div>`;
             } else {
-                const sysMsgDiv = document.createElement('div');
-                sysMsgDiv.className = 'flex justify-center';
-                if (isEventMode) {
-                    sysMsgDiv.innerHTML = `<div class="max-w-[80%] sm:max-w-[70%] px-4 py-2 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 text-xs font-semibold text-center">เหตุการณ์: ${marked.parse(customEventText)}</div>`;
+                html += `<div class="max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 sm:px-5 py-3 text-base leading-relaxed bg-[#E4E6EB] dark:bg-slate-800 text-black dark:text-slate-100">`;
+                if (speaker && isGroupMode) {
+                    html += `<span class="block text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">${escapeHtml(speaker)}</span>`;
+                }
+                html += `<div class="markdown-content">${escapeHtml(msg)}</div></div>`;
+            }
+
+            if (speakerAvatar) {
+                html += `<img src="${speakerAvatar}" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 flex-shrink-0 shadow-sm">`;
+            } else {
+                html += `<div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${isUser ? 'bg-blue-600 text-white' : 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 border border-blue-200 dark:border-blue-800'}">${escapeHtml(speakerInitial)}</div>`;
+            }
+            
+            html += `</div>`;
+            return html;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderMarkdown();
+            const chatBox = document.getElementById('chat-box');
+            const chatForm = document.getElementById('chat-form');
+            const messageInput = document.getElementById('message-input');
+            const submitBtn = document.getElementById('submit-btn');
+            const sidebar = document.getElementById('sidebar');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+            // เลื่อนแชทไปล่างสุดอัตโนมัติ
+            function scrollToBottom() {
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+            
+            // เรียกเลื่อนลงล่างตอนโหลดหน้าเว็บเสร็จ
+            setTimeout(scrollToBottom, 100);
+
+            // Sidebar Toggle
+            document.getElementById('open-sidebar').addEventListener('click', () => {
+                sidebar.classList.remove('-translate-x-full');
+                sidebarOverlay.classList.remove('hidden');
+            });
+            document.getElementById('close-sidebar').addEventListener('click', () => {
+                sidebar.classList.add('-translate-x-full');
+                sidebarOverlay.classList.add('hidden');
+            });
+            sidebarOverlay.addEventListener('click', () => {
+                sidebar.classList.add('-translate-x-full');
+                sidebarOverlay.classList.add('hidden');
+            });
+
+            // Theme Toggle
+            const themeToggle = document.getElementById('theme-toggle');
+            const htmlRoot = document.getElementById('html-root');
+            if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                htmlRoot.classList.add('dark');
+            }
+            themeToggle.addEventListener('click', () => {
+                if (htmlRoot.classList.contains('dark')) {
+                    htmlRoot.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
                 } else {
-                    sysMsgDiv.innerHTML = `<div class="px-4 py-2 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 text-xs font-semibold">AI เริ่มสนทนา</div>`;
+                    htmlRoot.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
                 }
-                chatBox.appendChild(sysMsgDiv);
+            });
+
+            // Group Checkbox Logic
+            const groupCheckboxes = document.querySelectorAll('.group-checkbox');
+            const createGroupBtn = document.getElementById('create-group-btn');
+            const groupBtnText = document.getElementById('group-btn-text');
+            
+            function updateGroupBtn() {
+                const checked = document.querySelectorAll('.group-checkbox:checked').length;
+                if (checked >= 2) {
+                    createGroupBtn.disabled = false;
+                    groupBtnText.innerText = `สร้างกลุ่ม (${checked} ตัวละคร)`;
+                } else {
+                    createGroupBtn.disabled = true;
+                    groupBtnText.innerText = `เลือกตัวละครด้านล่างเพื่อสร้างกลุ่ม`;
+                }
+            }
+            groupCheckboxes.forEach(cb => cb.addEventListener('change', updateGroupBtn));
+
+            // Chat Form Submit
+            chatForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const text = messageInput.value.trim();
+                if (!text) return;
+
+                const formData = new FormData();
+                formData.append('ajax_chat', '1');
+                formData.append('user_message', text);
+
+                const fileInput = document.getElementById('file_input');
+                if (fileInput.files[0]) {
+                    formData.append('attachment', fileInput.files[0]);
+                }
+
+                // Display user message immediately
+                chatBox.insertAdjacentHTML('beforeend', createBubbleHTML('', text, true));
+                scrollToBottom();
                 
-                filePreview.classList.add('hidden');
-                attachedFile = null;
+                messageInput.value = '';
+                messageInput.style.height = 'auto';
+                document.getElementById('file_preview').classList.add('hidden');
                 fileInput.value = '';
-            }
-            
-            scrollToBottom();
-
-            isSending = true;
-            submitBtn.innerHTML = `<svg class="w-6 h-6 sm:w-7 sm:h-7 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>`;
-            submitBtn.disabled = true;
-
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'flex items-end gap-2 justify-start typing-indicator';
-            typingDiv.innerHTML = `
-                <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-700 animate-pulse">...</div>
-                <div class="max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 sm:px-5 py-3 text-base leading-relaxed bg-[#E4E6EB] dark:bg-slate-800 text-black dark:text-slate-100">
-                    <div class="flex gap-1">
-                        <span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 0s"></span>
-                        <span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></span>
-                        <span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></span>
-                    </div>
-                </div>`;
-            chatBox.appendChild(typingDiv);
-            scrollToBottom();
-
-            const formData = new FormData();
-            formData.append('ajax_chat', '1');
-            formData.append('user_message', userText);
-            if (forceRpSelect) formData.append('force_rp', forceRpSelect.value);
-            if (attachedFile) formData.append('attachment', attachedFile);
-            if (isAutoTalk) {
-                formData.append('auto_talk', '1');
-                if (isEventMode) {
-                    formData.append('event_mode', '1');
-                }
-            }
-
-            try {
-                const res = await fetch('index.php', { method: 'POST', body: formData });
-                const data = await res.json();
                 
-                typingDiv.remove();
+                submitBtn.disabled = true;
+                submitBtn.classList.add('animate-pulse');
 
-                if (data.success) {
-                    if (data.identity) {
-                        updateIdentityUI(data.identity);
-                    }
-
-                    let displayText = data.text.replace(/\[IDENTITY\].*?\[\/IDENTITY\]/gis, '').trim();
-                    displayText = displayText.replace(/```json|```/gis, '').trim();
-
-                    const bubbles = isGroupMode ? parseGroupBubblesJS(displayText) : [{ speaker: '', msg: displayText }];
+                try {
+                    const res = await fetch('index.php', { method: 'POST', body: formData });
+                    const data = await res.json();
                     
-                    bubbles.forEach(bubble => {
-                        let speakerAvatar = '';
-                        let speakerInitial = '👤';
+                    if (data.success) {
+                        const bubbles = isGroupMode ? parseGroupBubblesJS(data.text) : [{ speaker: '', msg: data.text }];
+                        bubbles.forEach(b => {
+                            chatBox.insertAdjacentHTML('beforeend', createBubbleHTML(b.speaker, b.msg, false));
+                        });
                         
-                        if (isGroupMode && bubble.speaker) {
-                            const member = groupMembersData.find(m => m.data.dna.nickname === bubble.speaker);
-                            if (member) {
-                                speakerAvatar = member.data.avatar || '';
-                                speakerInitial = bubble.speaker.charAt(0);
-                            } else {
-                                speakerAvatar = groupMembersData[0]?.data.avatar || '';
-                                speakerInitial = groupMembersData[0]?.data.dna.nickname.charAt(0) || 'A';
-                                bubble.speaker = groupMembersData[0]?.data.dna.nickname || 'ระบบ';
-                            }
-                        } else if (!isGroupMode) {
-                            speakerAvatar = mainAvatar;
-                            speakerInitial = mainInitial;
+                        if (data.identity) {
+                            updateIdentityUI(data.identity);
                         }
+                    } else {
+                        chatBox.insertAdjacentHTML('beforeend', `<div class="flex justify-center"><span class="text-red-500 text-sm bg-red-100 dark:bg-red-900/30 px-4 py-2 rounded-lg">${data.error || 'เกิดข้อผิดพลาด'}</span></div>`);
+                    }
+                } catch (err) {
+                    chatBox.insertAdjacentHTML('beforeend', `<div class="flex justify-center"><span class="text-red-500 text-sm bg-red-100 dark:bg-red-900/30 px-4 py-2 rounded-lg">Network Error</span></div>`);
+                }
 
-                        let avatarHtml = `<div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 bg-blue-100 dark:bg-blue-900/50 text-blue-600 border border-blue-200 dark:border-blue-800">${speakerInitial}</div>`;
-                        if (speakerAvatar) {
-                            avatarHtml = `<img src="${speakerAvatar}" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 flex-shrink-0 shadow-sm">`;
+                renderMarkdown();
+                scrollToBottom();
+                setTimeout(scrollToBottom, 200); // เลื่อนซ้ำเผื่อรูปภาพโหลดเสร็จช้า
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('animate-pulse');
+            });
+
+            // Auto resize textarea
+            messageInput.addEventListener('input', () => {
+                messageInput.style.height = 'auto';
+                messageInput.style.height = Math.min(messageInput.scrollHeight, 150) + 'px';
+            });
+
+            // File Attachment
+            const fileInput = document.getElementById('file_input');
+            const attachBtn = document.getElementById('attach_btn');
+            const filePreview = document.getElementById('file_preview');
+            const fileName = document.getElementById('file_name');
+            const removeFile = document.getElementById('remove_file');
+
+            attachBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files[0]) {
+                    fileName.innerText = fileInput.files[0].name;
+                    filePreview.classList.remove('hidden');
+                }
+            });
+            removeFile.addEventListener('click', () => {
+                fileInput.value = '';
+                filePreview.classList.add('hidden');
+            });
+
+            // Auto Talk & Event Buttons
+            const autoTalkBtn = document.getElementById('auto_talk_btn');
+            const eventModeBtn = document.getElementById('event_mode_btn');
+            const eventModal = document.getElementById('eventModal');
+            const startEventBtn = document.getElementById('start_event_btn');
+            const cancelEventBtn = document.getElementById('cancel_event_btn');
+            const eventTextInput = document.getElementById('event_text_input');
+
+            autoTalkBtn.addEventListener('click', () => {
+                messageInput.value = '';
+                chatForm.dispatchEvent(new Event('submit'));
+            });
+
+            eventModeBtn.addEventListener('click', () => {
+                eventModal.classList.remove('hidden');
+                eventModal.classList.add('flex');
+            });
+            cancelEventBtn.addEventListener('click', () => {
+                eventModal.classList.add('hidden');
+                eventModal.classList.remove('flex');
+            });
+            startEventBtn.addEventListener('click', () => {
+                const eventText = eventTextInput.value.trim();
+                if (!eventText) return;
+                
+                const formData = new FormData();
+                formData.append('ajax_chat', '1');
+                formData.append('auto_talk', '1');
+                formData.append('event_mode', '1');
+                formData.append('user_message', eventText);
+
+                // Simulate submit
+                chatBox.insertAdjacentHTML('beforeend', `<div class="flex justify-center w-full"><span class="text-amber-500 text-sm bg-amber-100 dark:bg-amber-900/30 px-4 py-2 rounded-lg">เหตุการณ์: ${escapeHtml(eventText)}</span></div>`);
+                scrollToBottom();
+                
+                eventModal.classList.add('hidden');
+                eventModal.classList.remove('flex');
+                eventTextInput.value = '';
+
+                // Post it
+                fetch('index.php', { method: 'POST', body: formData })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            const bubbles = isGroupMode ? parseGroupBubblesJS(data.text) : [{ speaker: '', msg: data.text }];
+                            bubbles.forEach(b => {
+                                chatBox.insertAdjacentHTML('beforeend', createBubbleHTML(b.speaker, b.msg, false));
+                            });
+                            if (data.identity) updateIdentityUI(data.identity);
+                        } else {
+                            chatBox.insertAdjacentHTML('beforeend', `<div class="flex justify-center"><span class="text-red-500 text-sm bg-red-100 dark:bg-red-900/30 px-4 py-2 rounded-lg">${data.error || 'Error'}</span></div>`);
                         }
+                        renderMarkdown();
+                        scrollToBottom();
+                        setTimeout(scrollToBottom, 200);
+                    });
+            });
 
-                        let speakerBadge = '';
-                        if (isGroupMode && bubble.speaker) {
-                            speakerBadge = `<span class="block text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">${bubble.speaker}</span>`;
-                        }
+            // Identity Hover & Modal
+            const avatarHoverArea = document.getElementById('avatar-hover-area');
+            const hoverTooltip = document.getElementById('hover-tooltip');
+            const identityModal = document.getElementById('identityModal');
+            const identityContent = document.getElementById('identity_content');
 
-                        const aiMsgDiv = document.createElement('div');
-                        aiMsgDiv.className = 'flex items-end gap-2 justify-start';
-                        aiMsgDiv.innerHTML = `
-                            ${avatarHtml}
-                            <div class="max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 sm:px-5 py-3 text-base leading-relaxed bg-[#E4E6EB] dark:bg-slate-800 text-black dark:text-slate-100">
-                                ${speakerBadge}
-                                <div class="markdown-content">${marked.parse(bubble.msg)}</div>
-                            </div>`;
-                        chatBox.appendChild(aiMsgDiv);
+            avatarHoverArea.addEventListener('mouseenter', () => hoverTooltip.classList.remove('hidden'));
+            avatarHoverArea.addEventListener('mouseleave', () => hoverTooltip.classList.add('hidden'));
+
+            function updateIdentityUI(id) {
+                if (!id) return;
+                document.getElementById('hover-mood').innerText = `อารมณ์: ${id.mood || '-'}`;
+                document.getElementById('hover-intimacy').innerText = `ความสนิท: ${id.intimacy || 0}%`;
+                document.getElementById('hover-trust').innerText = `ความไว้วางใจ: ${id.trust || 0}%`;
+            }
+
+            if (initialIdentity) updateIdentityUI(initialIdentity);
+
+            window.openIdentityModal = () => {
+                let html = '';
+                if (initialIdentity) {
+                    html += `<div><b class="block text-slate-400 text-xs uppercase mb-1">อารมณ์</b>${initialIdentity.mood || '-'}</div>`;
+                    html += `<div><b class="block text-slate-400 text-xs uppercase mb-1">ความคิดในใจ</b>${initialIdentity.thought || '-'}</div>`;
+                    
+                    const bars = [
+                        { label: 'ความสนิทสนม', val: initialIdentity.intimacy || 0, color: 'bg-emerald-500' },
+                        { label: 'ความไว้วางใจ', val: initialIdentity.trust || 0, color: 'bg-blue-500' },
+                        { label: 'ความรู้สึกทางโรแมนติก', val: initialIdentity.affection || 0, color: 'bg-rose-500' },
+                        { label: 'ความเครียด', val: initialIdentity.stress || 0, color: 'bg-amber-500' },
+                        { label: 'พลังงาน', val: initialIdentity.energy || 0, color: 'bg-indigo-500' }
+                    ];
+
+                    bars.forEach(b => {
+                        const v = b.val > 100 ? 100 : (b.val < 0 ? 0 : b.val);
+                        html += `
+                            <div>
+                                <div class="flex justify-between mb-1 text-xs"><span>${b.label}</span><span>${v}%</span></div>
+                                <div class="w-full bg-slate-200 dark:bg-slate-900 rounded-full h-1.5">
+                                    <div class="${b.color} h-1.5 rounded-full" style="width: ${v}%"></div>
+                                </div>
+                            </div>
+                        `;
                     });
                 } else {
-                    alert("เกิดข้อผิดพลาด: " + data.error);
+                    html = `<p class="text-center text-slate-400">ยังไม่มีข้อมูลตัวตน</p>`;
                 }
-            } catch (err) {
-                typingDiv.remove();
-                alert("Network Error");
-            }
+                identityContent.innerHTML = html;
+                identityModal.classList.remove('hidden');
+                identityModal.classList.add('flex');
+            };
 
-            isSending = false;
-            isAutoTalk = false;
-            isEventMode = false;
-            customEventText = "";
-            submitBtn.innerHTML = `<svg class="w-6 h-6 sm:w-7 sm:h-7" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>`;
-            submitBtn.disabled = false;
-            scrollToBottom();
+            window.closeIdentityModal = () => {
+                identityModal.classList.add('hidden');
+                identityModal.classList.remove('flex');
+            };
+
+            // Edit Group Modal Logic
+            const editGroupModal = document.getElementById('editGroupModal');
+            const groupsData = <?php echo json_encode($groups); ?>;
+
+            window.openEditGroupModal = (groupId) => {
+                const group = groupsData.find(g => g.id === groupId);
+                if (!group) return;
+
+                document.getElementById('modal_group_id').value = group.id;
+                document.getElementById('modal_group_name').value = group.name;
+                document.getElementById('modal_group_avatar').value = group.avatar || '';
+                document.getElementById('modal_delete_group_id').value = group.id;
+
+                document.querySelectorAll('.modal_member_checkbox').forEach(cb => {
+                    cb.checked = group.members.includes(cb.value);
+                });
+
+                editGroupModal.classList.remove('hidden');
+                editGroupModal.classList.add('flex');
+            };
+
+            window.closeEditGroupModal = () => {
+                editGroupModal.classList.add('hidden');
+                editGroupModal.classList.remove('flex');
+            };
         });
-
-        renderMarkdown();
-        scrollToBottom();
     </script>
 </body>
 </html>

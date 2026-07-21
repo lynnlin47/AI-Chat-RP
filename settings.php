@@ -48,6 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+        
+        $avatar_url = str_replace('\\', '/', $avatar_url);
 
         if (($hormone_male === 100 && $hormone_female === 100) || ($hormone_male === 0 && $hormone_female === 0)) {
             $query_params['error'] = 'ระดับฮอร์โมนของคุณไม่สามารถเป็น 100:100 หรือ 0:0 ได้';
@@ -117,8 +119,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+        
+        $ai_avatar_url = str_replace('\\', '/', $ai_avatar_url);
 
-        $new_filename = 'characters/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $nickname) . '.json';
+        $new_filename = 'characters/' . preg_replace('/[^\p{L}\p{M}\p{N}_-]/u', '_', $nickname) . '.json';
 
         if (($hormone_male === 100 && $hormone_female === 100) || ($hormone_male === 0 && $hormone_female === 0)) {
             $query_params['error'] = 'ระดับฮอร์โมนของตัวละครไม่สามารถเป็น 100:100 หรือ 0:0 ได้';
@@ -524,7 +528,7 @@ if (file_exists('user_profile/user_dna.json')) {
                             </div>
                             <div>
                                 <label class="block font-bold text-slate-400 uppercase mb-1">วันเดือนปีเกิด (ค.ศ.)</label>
-                                <input type="date" name="birthdate" id="form-birthdate" class="w-full bg-slate-50 dark:bg-slate-700 rounded px-3 py-1.5 text-slate-800 dark:text-slate-100 focus:outline-none" required>
+                                <input type="date" name="birthdate" id="form-birthdate" class="w-full bg-slate-50 dark:bg-slate-700 rounded px-2 py-1.5 text-slate-800 dark:text-slate-100 focus:outline-none" required>
                             </div>
                         </div>
 
@@ -730,17 +734,19 @@ if (file_exists('user_profile/user_dna.json')) {
         const aiAvatarPreviewImg = document.getElementById('avatar-preview-img');
         const aiAvatarPreviewContainer = document.getElementById('avatar-preview-container');
 
-        aiAvatarInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    aiAvatarPreviewImg.src = event.target.result;
-                    aiAvatarPreviewContainer.classList.remove('hidden');
-                };
-                reader.readAsDataURL(file);
-            }
-        });
+        if (aiAvatarInput) {
+            aiAvatarInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        aiAvatarPreviewImg.src = event.target.result;
+                        aiAvatarPreviewContainer.classList.remove('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
     </script>
 </body>
 </html>
